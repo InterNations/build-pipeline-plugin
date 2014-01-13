@@ -109,6 +109,12 @@
             <artifactId>parameterized-trigger</artifactId>
             <version>2.17</version>
         </dependency>
+        <dependency>
+            <groupId>org.jenkins-ci.plugins</groupId>
+            <artifactId>join</artifactId>
+            <version>1.13</version>
+            <optional>false</optional>
+        </dependency>
 
         <dependency>
             <groupId>org.seleniumhq.selenium</groupId>

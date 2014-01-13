@@ -25,25 +25,35 @@
 package au.com.centrumsystems.hudson.plugin.buildpipeline;
 
 import hudson.model.Action;
+import hudson.model.Cause.UserCause;
+import hudson.model.DependencyGraph;
+import hudson.model.Descriptor;
 import hudson.model.FreeStyleBuild;
 import hudson.model.ItemGroup;
+import hudson.model.Saveable;
 import hudson.model.TopLevelItem;
 import hudson.model.Cause.UpstreamCause;
 import hudson.model.FreeStyleProject;
 import hudson.model.Hudson;
 import hudson.model.Job;
 import hudson.model.Run;
+import hudson.tasks.BuildTrigger;
+import hudson.tasks.Publisher;
+import hudson.util.DescribableList;
 import jenkins.model.Jenkins;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.logging.Logger;
 
 import org.junit.Before;
 import org.junit.Test;
 import org.jvnet.hudson.test.HudsonTestCase;
 
 import au.com.centrumsystems.hudson.plugin.buildpipeline.trigger.BuildPipelineTrigger;
+import join.JoinTrigger;
 
 /**
  * Test Build Pipeline View
@@ -295,6 +305,66 @@ public class BuildPipelineViewTest extends HudsonTestCase {
 		project1.renameTo(proj3);
 		assertEquals(testView.getJob(proj3), project1);
 	}
+
+    @Test
+    public void testBuildsDoNotShowUpTwice() throws Exception {
+        final String bpViewName = "MyTestView";
+        final String bpViewTitle = "MyTestViewTitle";
+        final String proj1 = "Proj1";
+        final String proj2 = "Proj2";
+        final String proj3 = "Proj3";
+        final String proj4 = "Proj4";
+        final String noOfBuilds = "5";
+        final FreeStyleProject project1 = createFreeStyleProject(proj1);
+        final FreeStyleProject project2 = createFreeStyleProject(proj2);
+        final FreeStyleProject project3 = createFreeStyleProject(proj3);
+        final FreeStyleProject project4 = createFreeStyleProject(proj4);
+        FreeStyleBuild build1;
+
+        project1.getPublishersList().add(new BuildTrigger("Proj2,Proj3", false));
+        project1.getPublishersList().add(
+            new JoinTrigger(
+                new DescribableList<Publisher, Descriptor<Publisher>>(Saveable.NOOP), proj4, false
+            )
+        );
+
+        // Important; we must do this step to ensure that the dependency graphs are updated
+        Hudson.getInstance().rebuildDependencyGraph();
+
+        // Build project1
+        build1 = buildAndAssertSuccess(project1);
+        waitUntilNoActivity();
+
+        DependencyGraph dg = Hudson.getInstance().getDependencyGraph();
+
+        Logger LOGGER = Logger.getLogger("testBuildsDoNotShowUpTwice");
+        LOGGER.info("-----------------------------\n");
+
+        // Test a valid case
+        DownstreamProjectGridBuilder gridBuilder = new DownstreamProjectGridBuilder(proj1);
+        BuildPipelineView testView = BuildPipelineViewFactory.getBuildPipelineView(bpViewName, bpViewTitle, gridBuilder, noOfBuilds, false);
+
+        project1.scheduleBuild2(0, new UserCause()).get();
+        waitUntilNoActivity();
+
+        final BuildPipelineForm testForm = testView.getBuildPipelineForm();
+
+        BuildGrid bg = testForm.getBuildGrids().get(0);
+        int rowCount = bg.getRows();
+        int colCount = bg.getColumns();
+        LOGGER.info("Size of grid " + colCount + ", " + rowCount);
+        for (int r = 0; r < rowCount; r++) {
+            for (int c = 0; c < colCount; c++) {
+                if (bg.get(c, r) != null) {
+                    LOGGER.info("Build at (" + c + ", " + r + "): " + bg.get(c, r).getId());
+                }
+            }
+        }
+
+        LOGGER.info("-----------------------------\n");
+    }
+
+
 
 	@Test
 	public void testGetItems() throws IOException {
